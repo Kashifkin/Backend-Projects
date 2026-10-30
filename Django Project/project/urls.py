@@ -25,9 +25,6 @@ from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.contrib.auth import views as auth_views
 
 urlpatterns = [
-    path("", home),
-    path("about/", about),
-    path("contact/", contact),
     path("Employees/", Employees),
     path("admin/", admin.site.urls),
     path("Employees/delete/<int:employee_id>/",delete_employee,name="delete_employee",

@@ -1,59 +1,11 @@
 from django.shortcuts import get_object_or_404, redirect,render
-from django.views.decorators.http import require_POST
 from Employees_Data.models import Employee
 from django.contrib.auth import authenticate, login , logout
 from django.contrib import messages
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
-from .utils import send_email_to_client
-
-def home(request):
-    
-    students = [
-    {
-        "id": 1,
-        "name": "Ali",
-        "age": 20,
-        "course": "BS English",
-        "city": "Islamabad"
-    },
-    {
-        "id": 2,
-        "name": "Sara",
-        "age": 21,
-        "course": "Computer Science",
-        "city": "Lahore"
-    },
-    {
-        "id": 3,
-        "name": "Ahmed",
-        "age": 22,
-        "course": "Software Engineering",
-        "city": "Peshawar"
-    },
-    {
-        "id": 4,
-        "name": "Ayesha",
-        "age": 17,
-        "course": "Psychology",
-        "city": "Karachi"
-    },
-    {
-        "id": 5,
-        "name": "Usman",
-        "age": 17,
-        "course": "Data Science",
-        "city": "Rawalpindi"
-    }
-]
-    return render(request, "index.html",context={"Students":students})
 
 
-def about(request):
-    return render(request,"about.html")
-
-def contact(request):
-    return render(request,"home.html")
 
 
 @login_required(login_url="login")
@@ -207,7 +159,5 @@ def logout_page(request):
     return redirect("login")
 
 
-def send_email(request):
-    send_email_to_client()
-    return redirect("/")
+
     
