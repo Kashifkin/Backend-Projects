@@ -1,0 +1,73 @@
+
+
+    <nav>
+        <a href="/contact/"><strong>Contact</strong></a>
+        |
+        <a href="/about/"><strong>About</strong></a>
+    </nav>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Django Server</title>
+
+<h2>Students List</h2>
+
+<style>
+    table {
+        border-collapse: collapse;
+        width: 80%;
+    }
+
+    th, td {
+        border: 1px solid black;
+        padding: 10px;
+        text-align: left;
+    }
+
+    th {
+        background-color: lightgray;
+    }
+
+    .adult {
+        background-color: lightgreen;
+        color: darkgreen;
+        font-weight: bold;
+    }
+
+    .minor {
+        background-color: lightcoral;
+        color: darkred;
+        font-weight: bold;
+    }
+</style>
+
+<table>
+    <tr>
+        <th>Id</th>
+        <th>Name</th>
+        <th>Age</th>
+        <th>Course</th>
+        <th>City</th>
+        <th>Status</th>
+    </tr>
+
+    {% for std in Students %}
+    <tr>
+        <td>{{ std.id }}</td>
+        <td>{{ std.name }}</td>
+        <td>{{ std.age }}</td>
+        <td>{{ std.course }}</td>
+        <td>{{ std.city }}</td>
+
+        {% if std.age >= 18 %}
+            <td class="adult">18+ (Adult)</td>
+        {% else %}
+            <td class="minor">Under 18 (Minor)</td>
+        {% endif %}
+
+    </tr>
+    {% endfor %}
+</table>

@@ -1,0 +1,42 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Page</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f4f4f4;
+        }
+
+        h1 {
+            color: darkblue;
+        }
+
+        nav a {
+            margin-right: 15px;
+            text-decoration: none;
+            color: blue;
+        }
+    </style>
+</head>
+<body>
+
+    <a href="{% url 'send_email' %}",class="btn btn-sucess">Send Email</a>
+
+    <h1>Welcome to My Website!</h1>
+
+    <p>This is the home page of my Django website.</p>
+
+    <h2>What I Am Learning</h2>
+    <p>I am learning Python, Django, HTML, and CSS.</p>
+
+    <h2>My Goal</h2>
+    <p>My goal is to become a skilled backend developer.</p>
+
+</body>
+</html>

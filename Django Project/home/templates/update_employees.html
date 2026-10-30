@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block start %}
+
+<style>
+    .page-container {
+        max-width: 1250px;
+        margin: 40px auto;
+        padding: 0 20px;
+        box-sizing: border-box;
+    }
+
+    .employee-container {
+        max-width: 600px;
+        margin: 0 auto 40px;
+        padding: 30px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.05);
+        box-sizing: border-box;
+    }
+
+    .employee-container h2 {
+        margin: 0 0 25px;
+        color: #1f2937;
+        text-align: center;
+        font-size: 24px;
+    }
+
+    .employee-field {
+        margin-bottom: 18px;
+    }
+
+    .employee-field label {
+        display: block;
+        margin-bottom: 8px;
+        color: #374151;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .employee-field input {
+        display: block;
+        width: 100%;
+        padding: 12px 14px;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        font-size: 14px;
+        background: #fff;
+        box-sizing: border-box;
+    }
+
+    .employee-field input:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .employee-photo {
+        display: block;
+        width: 100px;
+        height: 100px;
+        margin-top: 10px;
+        object-fit: cover;
+        border-radius: 10px;
+        border: 1px solid #e5e7eb;
+    }
+
+    .submit-btn {
+        width: 100%;
+        padding: 13px;
+        border: none;
+        border-radius: 8px;
+        background: #2563eb;
+        color: white;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .submit-btn:hover {
+        background: #1d4ed8;
+    }
+
+    .back-link {
+        display: block;
+        margin-top: 18px;
+        text-align: center;
+        color: #2563eb;
+        text-decoration: none;
+        font-size: 14px;
+    }
+
+    .back-link:hover {
+        text-decoration: underline;
+    }
+
+    @media (max-width: 600px) {
+        .page-container {
+            margin: 20px auto;
+            padding: 0 12px;
+        }
+
+        .employee-container {
+            padding: 18px;
+        }
+    }
+</style>
+
+<div class="page-container">
+
+    <div class="employee-container">
+        <h2>Update Employee</h2>
+
+        <form method="POST" enctype="multipart/form-data">
+            {% csrf_token %}
+
+            <div class="employee-field">
+                <label for="employeeName">Employee Name</label>
+                <input
+                    type="text"
+                    id="employeeName"
+                    name="Employee_name"
+                    value="{{ employee.employee_name }}"
+                    placeholder="Enter employee name"
+                    required
+                >
+            </div>
+
+            <div class="employee-field">
+                <label for="department">Department</label>
+                <input
+                    type="text"
+                    id="department"
+                    name="department"
+                    value="{{ employee.department }}"
+                    placeholder="Enter department"
+                    required
+                >
+            </div>
+
+            <div class="employee-field">
+                <label for="age">Age</label>
+                <input
+                    type="number"
+                    id="age"
+                    name="age"
+                    value="{{ employee.age }}"
+                    min="1"
+                    required
+                >
+            </div>
+
+            <div class="employee-field">
+                <label>Current Employee Photo</label>
+
+                {% if employee.image %}
+                    <img
+                        src="{{ employee.image.url }}"
+                        class="employee-photo"
+                        alt="Current employee photo"
+                    >
+                {% else %}
+                    <p>No photo uploaded.</p>
+                {% endif %}
+            </div>
+
+            <div class="employee-field">
+                <label for="image">Choose a New Photo (Optional)</label>
+                <input
+                    type="file"
+                    id="image"
+                    name="image"
+                    accept="image/*"
+                >
+            </div>
+
+            <button type="submit" class="submit-btn">
+                Save Changes
+            </button>
+        </form>
+
+        <a href="/Employees/" class="back-link">
+            Back to Employee List
+        </a>
+    </div>
+
+</div>
+
+{% endblock %}
