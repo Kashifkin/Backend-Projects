@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+.venv/
+
+# Environment secrets
+.env
+
+# Local database
+db.sqlite3
+
+# Generated files
+media/
+staticfiles/
