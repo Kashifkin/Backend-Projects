@@ -1,15 +1,18 @@
 
 from decimal import Decimal
+
 from django.contrib.auth.models import User
 from django.db import transaction
+
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError,PermissionDenied,NotFound
-from rest_framework.permissions import AllowAny, IsAuthenticated,IsAdminUser
+from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
 from .models import *
 from .serializers import *
-from .permission import IsAdminOrReadOnly
+from .permission import *
 
 
 class ProductListCreateView(generics.ListCreateAPIView):
@@ -35,7 +38,9 @@ class CustomerProfileView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
-        profile, _ = CustomerProfile.objects.get_or_create(user=self.request.user)
+        profile, _ = CustomerProfile.objects.get_or_create(
+            user=self.request.user
+        )
         return profile
 
 
@@ -44,7 +49,9 @@ class CartView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
-        cart, _ = Cart.objects.get_or_create(user=self.request.user)
+        cart, _ = Cart.objects.get_or_create(
+            user=self.request.user
+        )
         return cart
 
 
@@ -53,7 +60,7 @@ class AddToCartView(generics.CreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def perform_create(self, serializer):
-        product_id = self.request.data.get("product")
+        product_id = serializer.validated_data.get("product")
         quantity = serializer.validated_data.get("quantity", 1)
 
         if quantity < 1:
@@ -63,15 +70,17 @@ class AddToCartView(generics.CreateAPIView):
 
         try:
             product = Product.objects.get(
-                id=product_id,
+                id=product_id.id,
                 is_active=True
             )
-        except (Product.DoesNotExist, ValueError, TypeError):
+        except (Product.DoesNotExist, AttributeError, ValueError, TypeError):
             raise ValidationError({
                 "product": "Product does not exist or is inactive."
             })
 
-        cart, _ = Cart.objects.get_or_create(user=self.request.user)
+        cart, _ = Cart.objects.get_or_create(
+            user=self.request.user
+        )
 
         item = CartItem.objects.filter(
             cart=cart,
@@ -88,7 +97,7 @@ class AddToCartView(generics.CreateAPIView):
 
         if item:
             item.quantity = quantity
-            item.save()
+            item.save(update_fields=["quantity"])
         else:
             item = CartItem.objects.create(
                 cart=cart,
@@ -142,8 +151,15 @@ class CheckoutView(APIView):
             })
 
         with transaction.atomic():
-            cart, _ = Cart.objects.get_or_create(user=request.user)
-            cart_items = list(cart.items.select_related("product"))
+            Cart.objects.get_or_create(user=request.user)
+
+            cart = Cart.objects.select_for_update().get(
+                user=request.user
+            )
+
+            cart_items = list(
+                cart.items.select_related("product")
+            )
 
             if not cart_items:
                 raise ValidationError({
@@ -161,7 +177,7 @@ class CheckoutView(APIView):
                     )
                 except Product.DoesNotExist:
                     raise ValidationError({
-                        print(item.product.name,"is not available")
+                        "product": f"{item.product.name} is not available."
                     })
 
                 if item.quantity < 1 or item.quantity > product.stock:
@@ -231,41 +247,32 @@ class AdminOrderListView(generics.ListAPIView):
             .prefetch_related("items")
             .order_by("-created_at")
         )
-        
-class AdminOrderStatusUpdateView(APIView):
+
+
+class AdminOrderStatusUpdateView(generics.UpdateAPIView):
+    serializer_class = OrderSerializer
     permission_classes = [IsAdminUser]
+    http_method_names = ["patch", "head", "options"]
 
-    allowed_statuses = [
-        "pending",
-        "processing",
-        "shipped",
-        "delivered",
-    ]
+    def get_queryset(self):
+        return Order.objects.all()
 
-    def get_order(self, request, pk):
-        if not request.user.is_staff:
-            raise PermissionDenied(
-                "Only staff members can manage orders."
-            )
-
-        try:
-            return Order.objects.get(pk=pk)
-        except Order.DoesNotExist:
-            raise NotFound("Order not found.")
-
-    def get(self, request, pk):
-        order = self.get_order(request, pk)
-        return Response(OrderSerializer(order).data)
-
-    def patch(self, request, pk):
-        order = self.get_order(request, pk)
+    def patch(self, request, *args, **kwargs):
+        order = self.get_object()
         new_status = request.data.get("status")
 
-        if new_status not in self.allowed_statuses:
+        allowed_statuses = [
+            "pending",
+            "processing",
+            "shipped",
+            "delivered",
+        ]
+
+        if new_status not in allowed_statuses:
             raise ValidationError({
                 "status": (
-                    "Choose pending, processing, shipped, "
-                    "or delivered."
+                    "Invalid status. Choose pending, processing, "
+                    "shipped, or delivered."
                 )
             })
 
