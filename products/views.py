@@ -1,30 +1,50 @@
-
 from decimal import Decimal
-
 from django.contrib.auth.models import User
 from django.db import transaction
-
 from rest_framework import generics, status
-from rest_framework.exceptions import ValidationError, PermissionDenied
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from .models import *
 from .serializers import *
-from .permission import *
+from .permission import IsAdminOrReadOnly
+from .services import checkout_user
 
 
 class ProductListCreateView(generics.ListCreateAPIView):
-    queryset = Product.objects.filter(is_active=True)
     serializer_class = ProductSerializer
     permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        queryset = Product.objects.all()
+
+      
+        if not (
+            self.request.user.is_authenticated
+            and self.request.user.is_staff
+        ):
+            queryset = queryset.filter(is_active=True)
+
+        return queryset.order_by("id")
 
 
 class ProductDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Product.objects.all()
     serializer_class = ProductSerializer
     permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        queryset = Product.objects.all()
+
+       
+        if not (
+            self.request.user.is_authenticated
+            and self.request.user.is_staff
+        ):
+            queryset = queryset.filter(is_active=True)
+
+        return queryset
+
 
 
 class Register(generics.CreateAPIView):
@@ -44,6 +64,8 @@ class CustomerProfileView(generics.RetrieveUpdateAPIView):
         return profile
 
 
+
+
 class CartView(generics.RetrieveAPIView):
     serializer_class = CartSerializer
     permission_classes = [IsAuthenticated]
@@ -59,8 +81,11 @@ class AddToCartView(generics.CreateAPIView):
     serializer_class = CartItemSerializer
     permission_classes = [IsAuthenticated]
 
-    def perform_create(self, serializer):
-        product_id = serializer.validated_data.get("product")
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        product_reference = serializer.validated_data.get("product")
         quantity = serializer.validated_data.get("quantity", 1)
 
         if quantity < 1:
@@ -68,44 +93,62 @@ class AddToCartView(generics.CreateAPIView):
                 "quantity": "Quantity must be at least 1."
             })
 
+      
         try:
+            product_id = getattr(product_reference, "pk", product_reference)
+
             product = Product.objects.get(
-                id=product_id.id,
-                is_active=True
+                pk=product_id,
+                is_active=True,
             )
-        except (Product.DoesNotExist, AttributeError, ValueError, TypeError):
+        except (Product.DoesNotExist, TypeError, ValueError):
             raise ValidationError({
                 "product": "Product does not exist or is inactive."
             })
 
-        cart, _ = Cart.objects.get_or_create(
-            user=self.request.user
-        )
-
-        item = CartItem.objects.filter(
-            cart=cart,
-            product=product
-        ).first()
-
-        if item:
-            quantity += item.quantity
-
-        if quantity > product.stock:
-            raise ValidationError({
-                "quantity": f"Only {product.stock} units are available."
-            })
-
-        if item:
-            item.quantity = quantity
-            item.save(update_fields=["quantity"])
-        else:
-            item = CartItem.objects.create(
-                cart=cart,
-                product=product,
-                quantity=quantity
+        with transaction.atomic():
+            cart, _ = Cart.objects.get_or_create(
+                user=request.user
             )
 
-        serializer.instance = item
+        
+            product = Product.objects.select_for_update().get(
+                pk=product.pk
+            )
+
+            item = CartItem.objects.select_for_update().filter(
+                cart=cart,
+                product=product,
+            ).first()
+
+            new_quantity = quantity
+
+            if item:
+                new_quantity += item.quantity
+
+            if new_quantity > product.stock:
+                raise ValidationError({
+                    "quantity": (
+                        f"Only {product.stock} units are available."
+                    )
+                })
+
+            if item:
+                item.quantity = new_quantity
+                item.save(update_fields=["quantity"])
+            else:
+                item = CartItem.objects.create(
+                    cart=cart,
+                    product=product,
+                    quantity=new_quantity,
+                )
+
+        output_serializer = self.get_serializer(item)
+
+        return Response(
+            output_serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class UpdateCartItemView(generics.RetrieveUpdateDestroyAPIView):
@@ -114,14 +157,16 @@ class UpdateCartItemView(generics.RetrieveUpdateDestroyAPIView):
     http_method_names = ["get", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        return CartItem.objects.filter(
-            cart__user=self.request.user
+        return (
+            CartItem.objects
+            .filter(cart__user=self.request.user)
+            .select_related("product", "cart")
         )
 
     def perform_update(self, serializer):
         quantity = serializer.validated_data.get(
             "quantity",
-            serializer.instance.quantity
+            serializer.instance.quantity,
         )
 
         if quantity < 1:
@@ -129,106 +174,59 @@ class UpdateCartItemView(generics.RetrieveUpdateDestroyAPIView):
                 "quantity": "Quantity must be at least 1."
             })
 
-        product = serializer.instance.product
+        with transaction.atomic():
+            product = Product.objects.select_for_update().get(
+                pk=serializer.instance.product_id
+            )
 
-        if quantity > product.stock:
-            raise ValidationError({
-                "quantity": f"Only {product.stock} units are available."
-            })
+            if not product.is_active:
+                raise ValidationError({
+                    "product": "This product is no longer available."
+                })
 
-        serializer.save()
+            if quantity > product.stock:
+                raise ValidationError({
+                    "quantity": (
+                        f"Only {product.stock} units are available."
+                    )
+                })
+
+            serializer.save()
+
+
+
 
 
 class CheckoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        address = request.data.get("delivery_address", "").strip()
-
-        if not address:
-            raise ValidationError({
-                "delivery_address": "Please enter your delivery address."
-            })
-
-        with transaction.atomic():
-            Cart.objects.get_or_create(user=request.user)
-
-            cart = Cart.objects.select_for_update().get(
-                user=request.user
-            )
-
-            cart_items = list(
-                cart.items.select_related("product")
-            )
-
-            if not cart_items:
-                raise ValidationError({
-                    "cart": "Your cart is empty."
-                })
-
-            products = {}
-            total = Decimal("0.00")
-
-            for item in cart_items:
-                try:
-                    product = Product.objects.select_for_update().get(
-                        id=item.product_id,
-                        is_active=True
-                    )
-                except Product.DoesNotExist:
-                    raise ValidationError({
-                        "product": f"{item.product.name} is not available."
-                    })
-
-                if item.quantity < 1 or item.quantity > product.stock:
-                    raise ValidationError({
-                        "stock": f"Not enough stock for {product.name}."
-                    })
-
-                products[item.id] = product
-                total += product.price * item.quantity
-
-            order = Order.objects.create(
-                user=request.user,
-                delivery_address=address,
-                total_amount=total
-            )
-
-            for item in cart_items:
-                product = products[item.id]
-
-                OrderItem.objects.create(
-                    order=order,
-                    product=product,
-                    product_name=product.name,
-                    price=product.price,
-                    quantity=item.quantity
-                )
-
-                product.stock -= item.quantity
-                product.save(update_fields=["stock"])
-
-            cart.items.all().delete()
+        order = checkout_user(
+            user=request.user,
+            delivery_address=request.data.get("delivery_address", ""),
+        )
 
         return Response(
             OrderSerializer(order).data,
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_201_CREATED,
         )
 
 
-class OrderListView(APIView):
+
+
+
+class OrderListView(generics.ListAPIView):
+    serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        orders = (
+    def get_queryset(self):
+        return (
             Order.objects
-            .filter(user=request.user)
+            .filter(user=self.request.user)
             .prefetch_related("items")
             .order_by("-created_at")
         )
 
-        serializer = OrderSerializer(orders, many=True)
-        return Response(serializer.data)
 
 
 class AdminOrderListView(generics.ListAPIView):
@@ -236,11 +234,6 @@ class AdminOrderListView(generics.ListAPIView):
     permission_classes = [IsAdminUser]
 
     def get_queryset(self):
-        if not self.request.user.is_staff:
-            raise PermissionDenied(
-                "Only staff members can manage all orders."
-            )
-
         return (
             Order.objects
             .select_related("user")
@@ -261,12 +254,12 @@ class AdminOrderStatusUpdateView(generics.UpdateAPIView):
         order = self.get_object()
         new_status = request.data.get("status")
 
-        allowed_statuses = [
+        allowed_statuses = {
             "pending",
             "processing",
             "shipped",
             "delivered",
-        ]
+        }
 
         if new_status not in allowed_statuses:
             raise ValidationError({
@@ -279,4 +272,7 @@ class AdminOrderStatusUpdateView(generics.UpdateAPIView):
         order.status = new_status
         order.save(update_fields=["status"])
 
-        return Response(OrderSerializer(order).data)
+        return Response(
+            OrderSerializer(order).data,
+            status=status.HTTP_200_OK,
+        )
