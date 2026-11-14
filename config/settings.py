@@ -1,20 +1,56 @@
 
 from datetime import timedelta
 from pathlib import Path
+import dj_database_url
+import sentry_sdk
+import whitenoise
 
 from decouple import config, Csv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Core security
+
+# Keep your existing SECRET_KEY private and load it from .env
 SECRET_KEY = config("SECRET_KEY")
+
 DEBUG = config("DEBUG", default=False, cast=bool)
 
-ALLOWED_HOSTS = config(
-    "ALLOWED_HOSTS",
-    default="127.0.0.1,localhost",
-    cast=Csv(),
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in config(
+        "ALLOWED_HOSTS",
+        default="localhost,127.0.0.1",
+    ).split(",")
+    if host.strip()
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in config("CSRF_TRUSTED_ORIGINS", default="").split(",")
+    if origin.strip()
+]
+
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in config("CORS_ALLOWED_ORIGINS", default="").split(",")
+    if origin.strip()
+]
+
+# Enable these in the production environment when HTTPS is configured
+SECURE_SSL_REDIRECT = config(
+    "SECURE_SSL_REDIRECT", default=False, cast=bool
 )
+SESSION_COOKIE_SECURE = config(
+    "SESSION_COOKIE_SECURE", default=False, cast=bool
+)
+CSRF_COOKIE_SECURE = config(
+    "CSRF_COOKIE_SECURE", default=False, cast=bool
+)
+SECURE_HSTS_SECONDS = config(
+    "SECURE_HSTS_SECONDS", default=0, cast=int
+)
+
 
 # Applications
 INSTALLED_APPS = [
@@ -27,6 +63,8 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "products",
+    "cloudinary_storage",
+    "cloudinary",
 ]
 
 MIDDLEWARE = [
@@ -61,12 +99,35 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 # Database: SQLite for development.
 # Production database configuration will be added when deployment is planned.
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+
+DATABASE_URL = config("DATABASE_URL", default="")
+
+if DATABASE_URL:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,
+        )
     }
-}
+elif config("DB_ENGINE", default="sqlite") == "postgres":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": config("DB_NAME"),
+            "USER": config("DB_USER"),
+            "PASSWORD": config("DB_PASSWORD"),
+            "HOST": config("DB_HOST", default="localhost"),
+            "PORT": config("DB_PORT", default="5432"),
+        }
+    }
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
@@ -173,3 +234,36 @@ LOGGING = {
         "level": config("LOG_LEVEL", default="INFO"),
     },
 }
+
+
+
+
+CLOUDINARY_STORAGE = {
+    "CLOUD_NAME": config("CLOUDINARY_CLOUD_NAME"),
+    "API_KEY": config("CLOUDINARY_API_KEY"),
+    "API_SECRET": config("CLOUDINARY_API_SECRET"),
+}
+
+
+STORAGES = {
+    "default": {
+        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
+
+
+
+
+SENTRY_DSN = config("SENTRY_DSN", default="")
+
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment=config("SENTRY_ENVIRONMENT", default="development"),
+        send_default_pii=False,
+        traces_sample_rate=0.1,
+    )
